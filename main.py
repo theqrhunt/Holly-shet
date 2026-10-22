@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from TikTokLive import TikTokLiveClient
+from TikTokLive.client.web.web_settings import WebDefaults
 from TikTokLive.events import (
     CommentEvent,
     GiftEvent,
@@ -20,7 +21,17 @@ logger = logging.getLogger("tiktok-api")
 
 # Render environment variables
 TIKTOK_USERNAME = "nostalagiaai"
+
+# Separate API key for protecting your /events endpoint
 API_KEY = "api19379Hao-@29Uwi7283772G"
+
+# Euler Stream signing API key for TikTokLive
+# Set EULER_API_KEY in your Render environment variables.
+EULER_API_KEY = "euler_YzM5Zjk0ZGYxMjkxZjFhNmU1NTlhMzZjZmNiYTk0Zjk3NzU0OTgyNzFiMThhYmI0OWJiNTc2"
+
+# Configure Euler BEFORE creating TikTokLiveClient
+WebDefaults.tiktok_sign_api_key = EULER_API_KEY or None
+
 MAX_EVENTS = 5000
 
 # Temporary in-memory event queue
@@ -39,10 +50,12 @@ stop_event = None
 
 
 def get_timestamp():
-    """Return the current Unix timestamp and readable UTC time."""
+    """Return Unix timestamp and readable UTC timestamp."""
     timestamp = time.time()
+
     received_at = datetime.fromtimestamp(
-        timestamp, tz=timezone.utc
+        timestamp,
+        tz=timezone.utc,
     ).isoformat()
 
     return timestamp, received_at
@@ -58,7 +71,7 @@ async def add_event(data: dict):
         data["id"] = next_event_id
         next_event_id += 1
 
-        # Timestamp recorded when the event is received by this API
+        # Time when this API receives and processes the event
         data["timestamp"] = timestamp
         data["received_at"] = received_at
 
@@ -73,12 +86,15 @@ async def add_event(data: dict):
 
 async def tiktok_worker():
     """Connect to TikTok LIVE and retry after failures."""
+
     if not TIKTOK_USERNAME:
         state["last_error"] = "TIKTOK_USERNAME is not configured"
         logger.error(state["last_error"])
         return
 
     while stop_event and not stop_event.is_set():
+
+        # Euler API key is already configured through WebDefaults
         client = TikTokLiveClient(
             unique_id=TIKTOK_USERNAME
         )
@@ -88,7 +104,11 @@ async def tiktok_worker():
             state["connected"] = True
             state["last_error"] = None
             state["last_connected_at"] = time.time()
-            logger.info("Connected to @%s", TIKTOK_USERNAME)
+
+            logger.info(
+                "Connected to @%s",
+                TIKTOK_USERNAME,
+            )
 
         @client.on(DisconnectEvent)
         async def on_disconnect(event: DisconnectEvent):
@@ -121,9 +141,11 @@ async def tiktok_worker():
             })
 
         try:
-            logger.info("Connecting to @%s...", TIKTOK_USERNAME)
+            logger.info(
+                "Connecting to @%s...",
+                TIKTOK_USERNAME,
+            )
 
-            # TikTokLive's start() starts its connection loop.
             await client.start()
 
         except asyncio.CancelledError:
@@ -159,7 +181,7 @@ async def tiktok_worker():
 async def check_api_key(
     x_api_key: str | None = Header(default=None),
 ):
-    # API_KEY is optional. Configure it in Render to protect /events.
+    """Protect /events using your separate API key."""
     if API_KEY and x_api_key != API_KEY:
         raise HTTPException(
             status_code=401,
