@@ -1,8 +1,8 @@
-
 import asyncio
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from collections import deque
 from contextlib import asynccontextmanager
 
@@ -38,14 +38,29 @@ state = {
 stop_event = None
 
 
+def get_timestamp():
+    """Return the current Unix timestamp and readable UTC time."""
+    timestamp = time.time()
+    received_at = datetime.fromtimestamp(
+        timestamp, tz=timezone.utc
+    ).isoformat()
+
+    return timestamp, received_at
+
+
 async def add_event(data: dict):
     """Add an event to the queue in arrival order."""
     global next_event_id
 
     async with queue_lock:
+        timestamp, received_at = get_timestamp()
+
         data["id"] = next_event_id
         next_event_id += 1
-        data["timestamp"] = time.time()
+
+        # Timestamp recorded when the event is received by this API
+        data["timestamp"] = timestamp
+        data["received_at"] = received_at
 
         events_queue.append(data)
 
@@ -53,7 +68,7 @@ async def add_event(data: dict):
         while len(events_queue) > MAX_EVENTS:
             events_queue.popleft()
 
-    state["last_event_at"] = time.time()
+        state["last_event_at"] = timestamp
 
 
 async def tiktok_worker():
