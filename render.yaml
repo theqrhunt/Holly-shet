@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: tiktoklive-events-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: TIKTOK_USERNAME
+        sync: false
+      - key: API_KEY
+        sync: false
